@@ -47,6 +47,8 @@ public class AdapterNativeInterface {
             boolean isAtvDevice,
             String hciInstanceName) {
         mNativeCallback = new AdapterNativeCallback(service, adapterProperties);
+        return false;
+        /*
         return initNative(
                 startRestricted,
                 isCommonCriteriaMode,
@@ -54,10 +56,11 @@ public class AdapterNativeInterface {
                 isAtvDevice,
                 hciInstanceName,
                 android.bluetooth.platform.flags.Flags.autonomousRepairingInitiation());
+                */
     }
 
     void cleanup() {
-        cleanupNative();
+        //cleanupNative();
     }
 
     void enable(String localName) {

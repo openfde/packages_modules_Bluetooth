@@ -971,13 +971,13 @@ static void enableNative(JNIEnv* env, jobject /* obj */, jstring jLocalName) {
   const std::string local_name = stringFromJstring(env, jLocalName);
   log::verbose("lock_name={}", local_name);
 
-  bluetooth_enable(std::move(local_name));
+  //bluetooth_enable(std::move(local_name));
 }
 
 static void disableNative(JNIEnv* /* env */, jobject /* obj */) {
   log::verbose("");
 
-  bluetooth_disable();
+  //bluetooth_disable();
 }
 
 static jboolean startDiscoveryNative(JNIEnv* /* env */, jobject /* obj */) {
@@ -1995,7 +1995,7 @@ static int register_com_android_bluetooth_btservice_AdapterService(JNIEnv* env) 
     log::error("Could not get JavaVM");
   }
 
-  sBluetoothInterface = &bluetoothInterface;
+  //sBluetoothInterface = &bluetoothInterface;
   return 0;
 }
 

@@ -150,8 +150,8 @@ static void initNative(JNIEnv* env, jobject object) {
     log::fatal("Failed to allocate Global Ref for BluetoothHciVendorSpecific Callbacks");
   }
 
-  sBluetoothHciVendorSpecificInterface =
-          bluetooth::hci_vs::getBluetoothHciVendorSpecificInterface();
+  sBluetoothHciVendorSpecificInterface = nullptr;
+          //bluetooth::hci_vs::getBluetoothHciVendorSpecificInterface();
   if (sBluetoothHciVendorSpecificInterface == nullptr) {
     log::error("Failed to get BluetoothHciVendorSpecific Interface");
     return;

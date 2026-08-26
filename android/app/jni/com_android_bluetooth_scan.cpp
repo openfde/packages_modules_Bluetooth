@@ -616,7 +616,7 @@ static void msft_monitor_enable_cb(bool enable, uint8_t status) {
 }
 
 static bool isMsftSupportedNative(JNIEnv* /* env */, jobject /* object */) {
-  return sScanner && sScanner->IsMsftSupported();
+  return false;//sScanner && sScanner->IsMsftSupported();
 }
 
 static void msftAdvMonitorAddNative(JNIEnv* env, jobject /* object*/, jobject msft_adv_monitor,
