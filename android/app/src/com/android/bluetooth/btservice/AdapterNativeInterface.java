@@ -20,17 +20,21 @@ import static android.bluetooth.BluetoothDevice.TRANSPORT_AUTO;
 
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.OobData;
+import android.openfde.Bluetooth;
 
 import com.android.bluetooth.Util;
+import com.android.bluetooth.Utils;
 
 import java.io.FileDescriptor;
 import java.lang.annotation.Native;
+import java.nio.charset.StandardCharsets;
 
 /** Native interface to be used by AdapterService */
 public class AdapterNativeInterface {
     private static final String TAG = Util.BT_PREFIX + AdapterNativeInterface.class.getSimpleName();
 
     @Native private AdapterNativeCallback mNativeCallback;
+    private static Bluetooth openfdeBluetooth = Bluetooth.getInstance(null);
 
     AdapterNativeInterface() {}
 
@@ -47,48 +51,47 @@ public class AdapterNativeInterface {
             boolean isAtvDevice,
             String hciInstanceName) {
         mNativeCallback = new AdapterNativeCallback(service, adapterProperties);
-        return false;
-        /*
-        return initNative(
-                startRestricted,
-                isCommonCriteriaMode,
-                configCompareResult,
-                isAtvDevice,
-                hciInstanceName,
-                android.bluetooth.platform.flags.Flags.autonomousRepairingInitiation());
-                */
+        return openfdeBluetooth.init();
     }
 
     void cleanup() {
-        //cleanupNative();
+        openfdeBluetooth.cleanup();
     }
 
     void enable(String localName) {
-        enableNative(localName);
+        openfdeBluetooth.enable();
     }
 
     void disable() {
-        disableNative();
+        openfdeBluetooth.disable();
     }
 
     boolean setScanMode(int mode) {
-        return setScanModeNative(mode);
+        int propertyScanMode = 0x07;
+        return openfdeBluetooth.setAdapterProperty(propertyScanMode, String.valueOf(mode));
     }
 
     void setLocalName(String localName) {
-        setLocalNameNative(localName);
+        openfdeBluetooth.setAdapterProperty(AbstractionLayer.BT_PROPERTY_BDNAME, localName);
     }
 
     boolean setAdapterProperty(int type, byte[] val) {
-        return setAdapterPropertyNative(type, val);
+        if (type == AbstractionLayer.BT_PROPERTY_ADAPTER_DISCOVERABLE_TIMEOUT) {
+            String newVal = String.valueOf(Utils.byteArrayToInt(val));
+            return openfdeBluetooth.setAdapterProperty(type, newVal);
+        }
+        return true;
     }
 
     boolean getAdapterProperty(int type) {
-        return getAdapterPropertyNative(type);
+        return openfdeBluetooth.getAdapterProperty(type);
     }
 
     boolean setDeviceProperty(byte[] address, int type, byte[] val) {
-        return setDevicePropertyNative(address, type, val);
+        if (type == AbstractionLayer.BT_PROPERTY_REMOTE_FRIENDLY_NAME) {
+            return openfdeBluetooth.setDeviceProperty(Utils.getAddressStringFromByte(address), type, Utils.byteArrayToUtf8String(val));
+        }
+        return true;
     }
 
     boolean getDeviceProperty(byte[] address, int type) {
@@ -96,7 +99,7 @@ public class AdapterNativeInterface {
     }
 
     boolean createBond(byte[] address, int addressType, int transport) {
-        return createBondNative(address, addressType, transport);
+        return openfdeBluetooth.createBond(Utils.getAddressStringFromByte(address), addressType, transport);
     }
 
     boolean createBondOutOfBand(byte[] address, int transport, OobData p192Data, OobData p256Data) {
@@ -104,15 +107,15 @@ public class AdapterNativeInterface {
     }
 
     boolean removeBond(byte[] address) {
-        return removeBondNative(address);
+        return openfdeBluetooth.removeBond(Utils.getAddressStringFromByte(address));
     }
 
     boolean cancelBond(byte[] address) {
-        return cancelBondNative(address);
+        return openfdeBluetooth.cancelBond(Utils.getAddressStringFromByte(address));
     }
 
     boolean pairingIsBusy() {
-        return pairingIsBusyNative();
+        return openfdeBluetooth.pairingIsBusy();
     }
 
     void generateLocalOobData(int transport) {
@@ -124,19 +127,23 @@ public class AdapterNativeInterface {
     }
 
     boolean startDiscovery() {
-        return startDiscoveryNative();
+        return openfdeBluetooth.startDiscovery();
     }
 
     boolean cancelDiscovery() {
-        return cancelDiscoveryNative();
+        return openfdeBluetooth.cancelDiscovery();
     }
 
     boolean pinReply(byte[] address, boolean accept, int len, byte[] pin) {
-        return pinReplyNative(address, accept, len, pin);
+        if (pin == null || len <= 0 || len > pin.length) {
+            return openfdeBluetooth.pinReply(Utils.getAddressStringFromByte(address), false, " ");
+        }
+        return openfdeBluetooth.pinReply(Utils.getAddressStringFromByte(address),
+            accept, new String(pin, 0, len, StandardCharsets.UTF_8));
     }
 
     boolean sspReply(byte[] address, int type, boolean accept, int passkey) {
-        return sspReplyNative(address, type, accept, passkey);
+        return openfdeBluetooth.sspReply(Utils.getAddressStringFromByte(address), type, accept, passkey);
     }
 
     boolean getRemoteServices(byte[] address, int transport) {

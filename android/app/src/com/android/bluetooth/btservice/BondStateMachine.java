@@ -342,7 +342,7 @@ public final class BondStateMachine extends StateMachine {
                         // TODO: Maintain list of devices that have fixed pin
                         // Generate a variable 6-digit PIN in range of 100000-999999
                         // This is not truly random but good enough.
-                        int pin = 100000 + (int) Math.floor((Math.random() * (999999 - 100000)));
+                        int pin = msg.arg1/*100000 + (int) Math.floor((Math.random() * (999999 - 100000)))*/;
                         sendPairingRequestIntent(
                                 devProp.getDevice(),
                                 Optional.of(pin),
@@ -983,6 +983,9 @@ public final class BondStateMachine extends StateMachine {
         msg.setData(bundle);
         msg.arg2 = min16Digits ? 1 : 0; // Use arg2 to pass the min16Digit boolean
 
+        if (nativePairingAlgorithm > 0) {
+            msg.arg1 = nativePairingAlgorithm;
+        }
         sendMessage(msg);
     }
 

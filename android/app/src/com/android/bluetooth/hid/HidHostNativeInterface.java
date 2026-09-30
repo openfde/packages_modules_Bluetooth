@@ -18,10 +18,13 @@ package com.android.bluetooth.hid;
 
 import static java.util.Objects.requireNonNull;
 
+import android.openfde.Bluetooth;
 import com.android.bluetooth.profile.NativeInterface;
+import com.android.bluetooth.Utils;
 
 /** Provides Bluetooth Hid Host profile, as a service in the Bluetooth application. */
 public class HidHostNativeInterface extends NativeInterface<HidHostNativeCallback> {
+    private static Bluetooth openfdeBluetooth = Bluetooth.getInstance(null);
 
     HidHostNativeInterface(HidHostNativeCallback nativeCallback) {
         super(requireNonNull(nativeCallback));
@@ -37,11 +40,11 @@ public class HidHostNativeInterface extends NativeInterface<HidHostNativeCallbac
     }
 
     boolean connectHid(byte[] address, int addressType, int transport, boolean direct) {
-        return connectHidNative(address, addressType, transport, direct);
+        return openfdeBluetooth.connect(Utils.getAddressStringFromByte(address));
     }
 
     boolean disconnectHid(byte[] address, int addressType, int transport, int reconnectPolicy) {
-        return disconnectHidNative(address, addressType, transport, reconnectPolicy);
+        return openfdeBluetooth.disconnect(Utils.getAddressStringFromByte(address));
     }
 
     boolean getProtocolMode(byte[] address, int addressType, int transport) {

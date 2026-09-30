@@ -817,7 +817,7 @@ public class A2dpService extends ConnectableProfile {
         return getAdapterService().setBufferLengthMillis(codec, value);
     }
 
-    void onConnectionStateChangedFromNative(BluetoothDevice device, int state, int reason) {
+    public void onConnectionStateChangedFromNative(BluetoothDevice device, int state, int reason) {
         if (!isAvailable()) {
             Log.w(TAG, "onConnectionStateChangedFromNative(): service is not available");
             return;

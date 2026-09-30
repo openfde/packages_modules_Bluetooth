@@ -146,6 +146,18 @@ object Util {
         }
 
     @JvmStatic
+    fun byteArrayToString(valueBuf: ByteArray): String {
+        val sb = StringBuilder()
+        for (idx in valueBuf.indices) {
+            if (idx != 0) {
+                sb.append(" ")
+            }
+            sb.append(String.format("%02x", valueBuf[idx]))
+        }
+        return sb.toString()
+    }
+
+    @JvmStatic
     fun getRedactedAddressStringFromByte(address: ByteArray?): String? {
         if (address == null || address.size != Utils.BD_ADDR_LEN) {
             return null
