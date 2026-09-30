@@ -68,6 +68,7 @@ import android.os.RemoteException;
 import android.os.SystemClock;
 import android.os.SystemProperties;
 import android.os.UserHandle;
+import android.openfde.Bluetooth;
 import android.provider.Settings;
 import android.sysprop.BluetoothProperties;
 
@@ -243,6 +244,8 @@ public class BluetoothManagerService {
                             });
                 }
             };
+
+    private static Bluetooth openfdeBluetooth = Bluetooth.getInstance(null);
 
     private String validateLocalName(String name) {
         if (name == null || name.isEmpty()) {
@@ -581,17 +584,14 @@ public class BluetoothManagerService {
         filter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY);
         mContext.registerReceiver(mReceiver, filter, null, mHandler);
 
-        mName =
-                validateLocalName(
-                        BluetoothServerProxy.getInstance()
-                                .settingsSecureGetString(
-                                        mContentResolver, Settings.Secure.BLUETOOTH_NAME));
+        mName = validateLocalName(openfdeBluetooth.getAdapterName());
         mAddress =
                 BluetoothServerProxy.getInstance()
                         .settingsSecureGetString(
                                 mContentResolver, Settings.Secure.BLUETOOTH_ADDRESS);
 
-        int persistedState = getBluetoothPersistedState();
+        int persistedState = openfdeBluetooth.isEnabled() ? BLUETOOTH_ON_BLUETOOTH : BLUETOOTH_OFF;
+        setBluetoothPersistedState(persistedState);
 
         mEnableExternal = persistedState != BLUETOOTH_OFF;
 

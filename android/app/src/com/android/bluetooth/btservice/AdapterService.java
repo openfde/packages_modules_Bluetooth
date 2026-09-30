@@ -34,13 +34,17 @@ import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
 import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
+import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 import static android.bluetooth.BluetoothProfile.getProfileName;
 import static android.bluetooth.BluetoothUtils.RemoteExceptionIgnoringConsumer;
 import static android.bluetooth.BluetoothUtils.logRemoteException;
 import static android.bluetooth.IBluetoothLeAudio.LE_AUDIO_GROUP_ID_INVALID;
+import static android.openfde.Bluetooth.CallBackEvents.*;
 
 import static com.android.bluetooth.Util.isPackageNameAccurate;
+import static com.android.bluetooth.Utils.BD_ADDR_LEN;
 import static com.android.bluetooth.Utils.callbackToApp;
+import static com.android.bluetooth.Utils.TYPED_BD_ADDR_LEN;
 import static com.android.bluetooth.Utils.isDualModeAudioEnabled;
 
 import static java.util.Objects.requireNonNull;
@@ -99,6 +103,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.hardware.devicestate.DeviceStateManager;
 import android.net.MacAddress;
+import android.openfde.Bluetooth;
 import android.os.AsyncTask;
 import android.os.BatteryStatsManager;
 import android.os.Binder;
@@ -221,6 +226,8 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 public class AdapterService extends Service {
     private static final String TAG = Util.BT_PREFIX + AdapterService.class.getSimpleName();
@@ -423,6 +430,8 @@ public class AdapterService extends Service {
             return mValue;
         }
     }
+
+    private static Bluetooth openfdeBluetooth = Bluetooth.getInstance(null);
 
     // Keep a constructor for ActivityThread.handleCreateService
     AdapterService() {
@@ -729,6 +738,230 @@ public class AdapterService extends Service {
             mMediaAudioServer = Optional.of(new MediaAudioServer(this));
         }
 
+        openfdeBluetooth.registerCallback(new Bluetooth.EventListener() {
+            @Override
+            public void onEvent(int what, String data) {
+                Log.d(TAG, "what : " + what + ",data : " + data);
+                Bluetooth.CallBackEvents event = Bluetooth.CallBackEvents.fromOrdinal(what);
+                if (event == null) {
+                    Log.e(TAG, "Unknown CallBackEvents ordinal: " + what);
+                    return;
+                }
+                switch (event) {
+                    case BT_STATE_ON -> {
+                        stateChangeCallback(AbstractionLayer.BT_STATE_ON);
+                    }
+                    case BT_STATE_OFF -> {
+                        stateChangeCallback(AbstractionLayer.BT_STATE_OFF);
+                    }
+                    case BT_DISCOVERY_STARTED -> {
+                        mAdapterProperties.discoveryStateChangeCallback(AbstractionLayer.BT_DISCOVERY_STARTED);
+                    }
+                    case BT_DISCOVERY_STOPPED -> {
+                        mAdapterProperties.discoveryStateChangeCallback(AbstractionLayer.BT_DISCOVERY_STOPPED);
+                    }
+                    case ADAPTER_PROPERTY_CHANGED -> {
+                        try {
+                            JSONObject json = new JSONObject(data);
+                            String bdName = String.valueOf(AbstractionLayer.BT_PROPERTY_BDNAME);
+                            String bdAddr = String.valueOf(AbstractionLayer.BT_PROPERTY_BDADDR);
+                            String classOfDevice = String.valueOf(AbstractionLayer.BT_PROPERTY_CLASS_OF_DEVICE);
+                            String uuidS = String.valueOf(AbstractionLayer.BT_PROPERTY_UUIDS);
+                            String adapterBondedDevices = String.valueOf(AbstractionLayer.BT_PROPERTY_ADAPTER_BONDED_DEVICES);
+                            ArrayList<Integer> typesList = new ArrayList<>();
+                            ArrayList<byte[]> valuesList = new ArrayList<>();
+
+                            if (json.has(bdName)) {
+                                typesList.add(AbstractionLayer.BT_PROPERTY_BDNAME);
+                                valuesList.add(json.getString(bdName).getBytes());
+                            }
+                            if (json.has(bdAddr)) {
+                                typesList.add(AbstractionLayer.BT_PROPERTY_BDADDR);
+                                valuesList.add(Util.getBytesFromAddress(json.getString(bdAddr)));
+                            }
+                            if (json.has(classOfDevice)) {
+                                typesList.add(AbstractionLayer.BT_PROPERTY_CLASS_OF_DEVICE);
+                                String deviceClass = json.getString(classOfDevice);
+                                byte[] classBytes = {
+                                    (byte) Integer.parseInt(deviceClass.substring(8, 10), 16),
+                                    (byte) Integer.parseInt(deviceClass.substring(6, 8), 16),
+                                    (byte) Integer.parseInt(deviceClass.substring(4, 6), 16),
+                                    (byte) Integer.parseInt(deviceClass.substring(2, 4), 16)
+                                };
+                                valuesList.add(classBytes);
+                            }
+                            if (json.has(uuidS)) {
+                                typesList.add(AbstractionLayer.BT_PROPERTY_UUIDS);
+                                String uuids = json.getString(uuidS);
+                                byte[] uuidsBytes = new byte[uuids.length() / 2];
+                                for (int i = 0; i < uuids.length(); i += 2) {
+                                    uuidsBytes[i / 2] = (byte) Integer.parseInt(uuids.substring(i, i + 2), 16);
+                                }
+                                valuesList.add(uuidsBytes);
+                            }
+                            if (json.has(adapterBondedDevices)) {
+                                typesList.add(AbstractionLayer.BT_PROPERTY_ADAPTER_BONDED_DEVICES);
+                                String bondedDevices = json.getString(adapterBondedDevices);
+                                String[] macs= bondedDevices.split(" ");
+                                byte[] macBytes = new byte[macs.length * TYPED_BD_ADDR_LEN];
+                                for (int i = 0; i < macs.length; i++) {
+                                    byte[] mac = Util.getBytesFromAddress(macs[i]);
+                                    System.arraycopy(mac, 0, macBytes, i * TYPED_BD_ADDR_LEN, BD_ADDR_LEN);
+                                    macBytes[i * TYPED_BD_ADDR_LEN + BD_ADDR_LEN] = 0;
+                                }
+                                valuesList.add(macBytes);
+                            }
+                            if (!typesList.isEmpty() && !valuesList.isEmpty()) {
+                                int[] typesArr = typesList.stream().mapToInt(i -> i).toArray();
+                                byte[][] valuesArr = valuesList.toArray(new byte[0][]);
+                                mAdapterProperties.adapterPropertyChangedCallback(typesArr, valuesArr);
+                            }
+                        } catch (JSONException e) {
+                            Log.e(TAG, "JSONException : " + e + ",data : " + data);
+                        }
+                    }
+                    case DEVICE_FOUND -> {
+                        try {
+                            JSONObject json = new JSONObject(data);
+                            if (json.has("mac")) {
+                                byte [] mac = Util.getBytesFromAddress(json.getString("mac"));
+                                mRemoteDevices.deviceFoundCallback(mac);
+                            }
+                        } catch (JSONException e) {
+                            Log.e(TAG, "JSONException : " + e + ",data : " + data);
+                        }
+                    }
+                    case DEVICE_PROPERTY_CHANGED -> {
+                        try {
+                            JSONObject json = new JSONObject(data);
+                            if (!json.has("mac")){
+                                break;
+                            }
+                            byte[] macBytes = Util.getBytesFromAddress(json.getString("mac"));
+                            String bdName = String.valueOf(AbstractionLayer.BT_PROPERTY_BDNAME);
+                            String bdAddr = String.valueOf(AbstractionLayer.BT_PROPERTY_BDADDR);
+                            String remoteFriendlyName = String.valueOf(AbstractionLayer.BT_PROPERTY_REMOTE_FRIENDLY_NAME);
+                            String classOfDevice = String.valueOf(AbstractionLayer.BT_PROPERTY_CLASS_OF_DEVICE);
+                            String uuidS = String.valueOf(AbstractionLayer.BT_PROPERTY_UUIDS);
+                            ArrayList<Integer> typesList = new ArrayList<>();
+                            ArrayList<byte[]> valuesList = new ArrayList<>();
+
+                            if (json.has(bdName)) {
+                                typesList.add(AbstractionLayer.BT_PROPERTY_BDNAME);
+                                valuesList.add(json.getString(bdName).getBytes());
+                            }
+                            if (json.has(bdAddr)) {
+                                typesList.add(AbstractionLayer.BT_PROPERTY_BDADDR);
+                                valuesList.add(Util.getBytesFromAddress(json.getString(bdAddr)));
+                            }
+                            if (json.has(remoteFriendlyName)) {
+                                typesList.add(AbstractionLayer.BT_PROPERTY_REMOTE_FRIENDLY_NAME);
+                                valuesList.add(json.getString(remoteFriendlyName).getBytes());
+                            }
+                            if (json.has(classOfDevice)) {
+                                typesList.add(AbstractionLayer.BT_PROPERTY_CLASS_OF_DEVICE);
+                                String deviceClass = json.getString(classOfDevice);
+                                byte[] classBytes = {
+                                    (byte) Integer.parseInt(deviceClass.substring(8, 10), 16),
+                                    (byte) Integer.parseInt(deviceClass.substring(6, 8), 16),
+                                    (byte) Integer.parseInt(deviceClass.substring(4, 6), 16),
+                                    (byte) Integer.parseInt(deviceClass.substring(2, 4), 16)
+                                };
+                                valuesList.add(classBytes);
+                            }
+                            if (json.has(uuidS)) {
+                                typesList.add(AbstractionLayer.BT_PROPERTY_UUIDS);
+                                String uuids = json.getString(uuidS);
+                                byte[] uuidsBytes = new byte[uuids.length() / 2];
+                                for (int i = 0; i < uuids.length(); i += 2) {
+                                    uuidsBytes[i / 2] = (byte) Integer.parseInt(uuids.substring(i, i + 2), 16);
+                                }
+                                valuesList.add(uuidsBytes);
+                            }
+                            if (!typesList.isEmpty() && !valuesList.isEmpty()) {
+                                int[] typesArr = typesList.stream().mapToInt(i -> i).toArray();
+                                byte[][] valuesArr = valuesList.toArray(new byte[0][]);
+                                mRemoteDevices.devicePropertyChangedCallback(macBytes,
+                                    BluetoothDevice.ADDRESS_TYPE_PUBLIC, typesArr, valuesArr);
+                            }
+                        } catch (JSONException e) {
+                            Log.e(TAG, "JSONException : " + e + ",data : " + data);
+                        }
+                    }
+                    case BOND_STATE_CHANGE -> {
+                        try {
+                            JSONObject json = new JSONObject(data);
+                            if (json.has("mac") && json.has("state")) {
+                                byte [] mac = Util.getBytesFromAddress(json.getString("mac"));
+                                int state = json.getInt("state");
+                                if (state == AbstractionLayer.BT_BOND_STATE_BONDED) {
+                                    mBondStateMachine.bondStateChangeCallback(AbstractionLayer.BT_STATUS_SUCCESS, mac,
+                                        BluetoothDevice.TRANSPORT_AUTO, AbstractionLayer.BT_BOND_STATE_BONDED, 0, 0, 0, 0);
+                                } else if (state == AbstractionLayer.BT_BOND_STATE_BONDING) {
+                                    mBondStateMachine.bondStateChangeCallback(AbstractionLayer.BT_STATUS_SUCCESS, mac,
+                                        BluetoothDevice.TRANSPORT_AUTO, AbstractionLayer.BT_BOND_STATE_BONDING, 0, 0, 0, 0);
+                                } else if (state == AbstractionLayer.BT_BOND_STATE_NONE) {
+                                    mBondStateMachine.bondStateChangeCallback(AbstractionLayer.BT_STATUS_SUCCESS, mac,
+                                        BluetoothDevice.TRANSPORT_AUTO, AbstractionLayer.BT_BOND_STATE_NONE, 0, 0, 0, 0);
+                                }
+                            }
+                        } catch (JSONException e) {
+                            Log.e(TAG, "JSONException : " + e + ",data : " + data);
+                        }
+                    }
+                    case FROFILE_CONNECTION_STATE_CHANGED -> {
+                        try {
+                            JSONObject json = new JSONObject(data);
+                            if (json.has("mac") && json.has("state")) {
+                                byte [] mac = Util.getBytesFromAddress(json.getString("mac"));
+                                int state = json.getInt("state");
+                                if (state == STATE_CONNECTED || state == STATE_DISCONNECTED) {
+                                    getA2dpService().ifPresent(a2dp -> a2dp.onConnectionStateChangedFromNative(
+                                        getDeviceFromByte(mac), state, 0));
+                                }
+                            }
+                        } catch (JSONException e) {
+                            Log.e(TAG, "JSONException : " + e + ",data : " + data);
+                        }
+                    }
+                    case SSP_REQUEST -> {
+                        try {
+                            JSONObject json = new JSONObject(data);
+                            if (json.has("mac") && json.has("variant")) {
+                                byte [] mac = Util.getBytesFromAddress(json.getString("mac"));
+                                int variant = json.getInt("variant");
+                                if (variant == AbstractionLayer.BT_PAIRING_VARIANT_PASSKEY_ENTRY
+                                    || variant == AbstractionLayer.BT_PAIRING_VARIANT_CONSENT) {
+                                    mBondStateMachine.sspRequestCallback(mac, BluetoothDevice.TRANSPORT_AUTO, variant, 0, 0);
+                                }
+                            }
+                        } catch (JSONException e) {
+                            Log.e(TAG, "JSONException : " + e + ",data : " + data);
+                        }
+                    }
+                    case PIN_REQUEST -> {
+                        try {
+                            JSONObject json = new JSONObject(data);
+                            if (json.has("mac") && json.has("name")) {
+                                if (json.has("pin")) {
+                                    mBondStateMachine.pinRequestCallback(
+                                        Util.getBytesFromAddress(json.getString("mac")),
+                                        json.getString("name").getBytes(), BluetoothClass.Device.PERIPHERAL_KEYBOARD,
+                                        false, json.getInt("pin"));
+                                } else {
+                                    mBondStateMachine.pinRequestCallback(
+                                        Util.getBytesFromAddress(json.getString("mac")),
+                                        json.getString("name").getBytes(), BluetoothClass.Device.PERIPHERAL_KEYBOARD,
+                                        false, 0);
+                                }
+                            }
+                        } catch (JSONException e) {
+                            Log.e(TAG, "JSONException : " + e + ",data : " + data);
+                        }
+                    }
+                }
+            }
+        });
         setAdapterService(this);
     }
 
@@ -771,7 +1004,7 @@ public class AdapterService extends Service {
     }
 
     List<BluetoothDevice> getMostRecentlyConnectedDevices() {
-        return mStorage.getMostRecentlyConnectedDevices();
+        return new ArrayList<>(mAdapterProperties.getBondedDevices());
     }
 
     void setActiveAudioPolicy(BluetoothDevice device, int policy) {

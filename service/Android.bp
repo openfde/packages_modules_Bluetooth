@@ -91,6 +91,7 @@ java_library {
         "modules-utils-build_system",
         "modules-utils-shell-command-handler",
         "service-bluetooth-binder-aidl",
+        "org.openfde.platform.bluetooth",
     ],
 
     sdk_version: "system_server_current",

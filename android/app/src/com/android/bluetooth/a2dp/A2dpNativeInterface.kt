@@ -18,6 +18,7 @@ package com.android.bluetooth.a2dp
 import android.bluetooth.BluetoothCodecConfig
 import android.bluetooth.BluetoothCodecType
 import android.bluetooth.BluetoothDevice
+import android.openfde.Bluetooth;
 import com.android.bluetooth.Util
 import com.android.bluetooth.btservice.AdapterService
 import com.android.bluetooth.profile.NativeInterface
@@ -28,6 +29,16 @@ class A2dpNativeInterface(
     nativeCallback: A2dpNativeCallback,
 ) : NativeInterface<A2dpNativeCallback>(nativeCallback) {
     private var supportedCodecTypes: Array<BluetoothCodecType>? = null
+
+    companion object {
+        private var openfdeBluetooth: Bluetooth? = null
+    }
+
+    init {
+        if (openfdeBluetooth == null) {
+            openfdeBluetooth = Bluetooth.getInstance(null)
+        }
+    }
 
     /**
      * Initializes the native interface.
@@ -63,7 +74,7 @@ class A2dpNativeInterface(
      * @return true on success, otherwise false.
      */
     fun connectA2dp(device: BluetoothDevice): Boolean {
-        return connectA2dpNative(getByteAddress(device))
+        return openfdeBluetooth?.connect(device.getAddress()) ?: false
     }
 
     /**
@@ -73,7 +84,7 @@ class A2dpNativeInterface(
      * @return true on success, otherwise false.
      */
     fun disconnectA2dp(device: BluetoothDevice): Boolean {
-        return disconnectA2dpNative(getByteAddress(device))
+        return openfdeBluetooth?.disconnect(device.getAddress()) ?: false
     }
 
     /**
